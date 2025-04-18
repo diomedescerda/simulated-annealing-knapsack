@@ -1,7 +1,6 @@
 from models import KnapsackItem
 import math
 import random
-import visualize_tsp
 import matplotlib.pyplot as plt
 
 
@@ -135,12 +134,6 @@ class SimAnneal(object):
             self.iteration = 1
             self.cur_solution, self.cur_fitness = self.initial_solution()
             self.anneal()
-
-    def visualize_routes(self):
-        """
-        Visualize the TSP route with matplotlib.
-        """
-        visualize_tsp.plotTSP([self.best_solution], self.coords)
 
     def plot_learning(self):
         """

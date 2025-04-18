@@ -1,6 +1,5 @@
 from models import KnapsackItem
 from anneal import SimAnneal
-import matplotlib.pyplot as plt
 import pandas as pd
 
 
@@ -24,8 +23,8 @@ if __name__ == "__main__":
         'Mochila_capacidad_maxima_20kg.xlsx', 20)
     sa = SimAnneal(items=items, max_capacity=max_capacity)
     sa.anneal()
+    print(f"Selected items: {[item.id for item, included in zip(items, sa.best_solution) if included]}")
     print(f"Solution: {sa.best_solution}")
     total_weight = sum(item.weight * count for item, count in zip(items, sa.best_solution))
     print(f"Total weight: {total_weight}/{sa.max_capacity}")
-#    sa.visualize_routes()
     sa.plot_learning()
