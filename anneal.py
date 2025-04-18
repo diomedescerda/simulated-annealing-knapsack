@@ -1,3 +1,4 @@
+from models import KnapsackItem
 import math
 import random
 import visualize_tsp
@@ -5,94 +6,114 @@ import matplotlib.pyplot as plt
 
 
 class SimAnneal(object):
-    def __init__(self, coords, T=-1, alpha=-1, stopping_T=-1, stopping_iter=-1):
-        self.coords = coords
-        self.N = len(coords)
-        self.T = math.sqrt(self.N) if T == -1 else T
+    def __init__(self, items: list[KnapsackItem], max_capacity, T=-1, alpha=-1, stopping_T=-1, stopping_iter=-1):
+        self.items = items
+        self.N = len(items)
+        self.max_capacity = max_capacity
+        self.T = 1e15 if T == -1 else T
         self.T_save = self.T  # save inital T to reset if batch annealing is used
-        self.alpha = 0.995 if alpha == -1 else alpha
+        self.alpha = 0.999 if alpha == -1 else alpha
         self.stopping_temperature = 1e-8 if stopping_T == -1 else stopping_T
-        self.stopping_iter = 100000 if stopping_iter == -1 else stopping_iter
+        self.stopping_iter = 1e5 if stopping_iter == -1 else stopping_iter
         self.iteration = 1
 
         self.nodes = [i for i in range(self.N)]
 
         self.best_solution = None
-        self.best_fitness = float("Inf")
+        self.best_iteration = 0
+        self.best_fitness = -float("Inf")
         self.fitness_list = []
 
+    def is_valid(self, solution):
+        total_weight = 0
+        for quantity, item in zip(solution, self.items):
+            if quantity < 0 or quantity > item.max_quantity:
+                return False
+            total_weight += quantity * item.weight
+            if total_weight > self.max_capacity:
+                return False
+        return True
+
     def initial_solution(self):
-        """
-        Greedy algorithm to get an initial solution (closest-neighbour).
-        """
-        cur_node = random.choice(self.nodes)  # start from a random node
-        solution = [cur_node]
+        """Greedy solution using value-to-weight ratio"""
+        sorted_items = sorted(self.items,
+                              key=lambda x: x.value / x.weight, reverse=True)
 
-        free_nodes = set(self.nodes)
-        free_nodes.remove(cur_node)
-        while free_nodes:
-            next_node = min(free_nodes, key=lambda x: self.dist(cur_node, x))  # nearest neighbour
-            free_nodes.remove(next_node)
-            solution.append(next_node)
-            cur_node = next_node
+        solution = [0] * self.N
+        remaining_capacity = self.max_capacity
 
-        cur_fit = self.fitness(solution)
-        if cur_fit < self.best_fitness:  # If best found so far, update best fitness
-            self.best_fitness = cur_fit
-            self.best_solution = solution
-        self.fitness_list.append(cur_fit)
-        return solution, cur_fit
+        for item in sorted_items:
+            idx = self.items.index(item)
+            quantity = item.max_quantity
+            while quantity > 0 and item.weight <= remaining_capacity:
+                solution[idx] += 1
+                remaining_capacity -= item.weight
+                quantity -= 1
 
-    def dist(self, node_0, node_1):
-        """
-        Euclidean distance between two nodes.
-        """
-        coord_0, coord_1 = self.coords[node_0], self.coords[node_1]
-        return math.sqrt((coord_0[0] - coord_1[0]) ** 2 + (coord_0[1] - coord_1[1]) ** 2)
+        fitness = sum(item.value * count for item, count in zip(self.items, solution))
+        return solution, fitness
+
+    def generate_candidate(self, current_solution):
+        for _ in range(100):
+            candidate = current_solution[:]
+            num_changes = random.randint(1, min(3, self.N))
+            for _ in range(num_changes):
+                idx = random.randint(0, self.N - 1)
+                mutation = random.choice([-1, 1])
+                candidate[idx] += mutation
+            if self.is_valid(candidate):
+                return candidate
+        return current_solution
 
     def fitness(self, solution):
-        """
-        Total distance of the current solution path.
-        """
-        cur_fit = 0
-        for i in range(self.N):
-            cur_fit += self.dist(solution[i % self.N], solution[(i + 1) % self.N])
-        return cur_fit
+        total_weight = sum(item.weight * count for item, count in zip(self.items, solution))
+        total_value = sum(item.value * count for item, count in zip(self.items, solution))
+
+        if total_weight > self.max_capacity:
+            return -1e9
+        return total_value
 
     def p_accept(self, candidate_fitness):
         """
         Probability of accepting if the candidate is worse than current.
         Depends on the current temperature and difference between candidate and current.
         """
-        return math.exp(-abs(candidate_fitness - self.cur_fitness) / self.T)
+        if candidate_fitness > self.cur_fitness:
+            return 1.0
+        try:
+            return math.exp((candidate_fitness - self.cur_fitness) / self.T)
+        except OverflowError:
+            return 0.0
 
     def accept(self, candidate):
-        """
-        Accept with probability 1 if candidate is better than current.
-        Accept with probabilty p_accept(..) if candidate is worse.
-        """
         candidate_fitness = self.fitness(candidate)
-        if candidate_fitness < self.cur_fitness:
-            self.cur_fitness, self.cur_solution = candidate_fitness, candidate
-            if candidate_fitness < self.best_fitness:
-                self.best_fitness, self.best_solution = candidate_fitness, candidate
+        # print(f"-|Current : {self.cur_fitness} -|candidate: {candidate_fitness}")
+        # Accept always if better
+        if candidate_fitness > self.cur_fitness:
+            self.cur_solution = candidate
+            self.cur_fitness = candidate_fitness
         else:
+            # Accept probabilistically if worse
             if random.random() < self.p_accept(candidate_fitness):
-                self.cur_fitness, self.cur_solution = candidate_fitness, candidate
+                self.cur_solution = candidate
+                self.cur_fitness = candidate_fitness
+
+        # Track best solution ever seen
+        if candidate_fitness > self.best_fitness:
+            self.best_fitness = candidate_fitness
+            self.best_solution = candidate
+            self.best_iteration = self.iteration
 
     def anneal(self):
-        """
-        Execute simulated annealing algorithm.
-        """
         # Initialize with the greedy solution.
         self.cur_solution, self.cur_fitness = self.initial_solution()
+        self.best_fitness, self.best_solution = self.cur_fitness, self.cur_solution
+        self.greedy_fitness = self.cur_fitness  # ← Store it right away
+        # print(f"Greedy solution: {self.cur_fitness}") testing purpose
 
         print("Starting annealing.")
         while self.T >= self.stopping_temperature and self.iteration < self.stopping_iter:
-            candidate = list(self.cur_solution)
-            l = random.randint(2, self.N - 1)
-            i = random.randint(0, self.N - l)
-            candidate[i : (i + l)] = reversed(candidate[i : (i + l)])
+            candidate = self.generate_candidate(self.cur_solution)
             self.accept(candidate)
             self.T *= self.alpha
             self.iteration += 1
@@ -100,8 +121,9 @@ class SimAnneal(object):
             self.fitness_list.append(self.cur_fitness)
 
         print("Best fitness obtained: ", self.best_fitness)
-        improvement = 100 * (self.fitness_list[0] - self.best_fitness) / (self.fitness_list[0])
-        print(f"Improvement over greedy heuristic: {improvement : .2f}%")
+        print("Found at iteration: ", self.best_iteration)
+        improvement = 100 * (self.best_fitness - self.greedy_fitness) / (self.greedy_fitness)
+        print(f"Improvement over greedy heuristic: {improvement: .2f}%")
 
     def batch_anneal(self, times=10):
         """
