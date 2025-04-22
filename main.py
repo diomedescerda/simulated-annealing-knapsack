@@ -1,7 +1,7 @@
 from models import KnapsackItem
 from anneal import SimAnneal
 import pandas as pd
-
+import time
 
 def read_knapsack_data(path, max_capacity):
     df = pd.read_excel(path)
@@ -21,10 +21,16 @@ def read_knapsack_data(path, max_capacity):
 if __name__ == "__main__":
     items, max_capacity = read_knapsack_data(
         'Mochila_capacidad_maxima_20kg.xlsx', 20)
+
     sa = SimAnneal(items=items, max_capacity=max_capacity)
+    start_time = time.time()
     sa.anneal()
+    finish_time = time.time()
+    duration = finish_time - start_time
+    print(f"Tiempo de duración: {duration:.2f} segundos")
     print(f"Selected items: {[item.id for item, included in zip(items, sa.best_solution) if included]}")
     print(f"Solution: {sa.best_solution}")
     total_weight = sum(item.weight * count for item, count in zip(items, sa.best_solution))
     print(f"Total weight: {total_weight}/{sa.max_capacity}")
+
     sa.plot_learning()

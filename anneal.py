@@ -1,3 +1,8 @@
+from operator import index
+import random
+
+from mpmath import limit
+
 from models import KnapsackItem
 import math
 import random
@@ -11,9 +16,9 @@ class SimAnneal(object):
         self.max_capacity = max_capacity
         self.T = 1e15 if T == -1 else T
         self.T_save = self.T  # save inital T to reset if batch annealing is used
-        self.alpha = 0.999 if alpha == -1 else alpha
+        self.alpha = 0.995 if alpha == -1 else alpha
         self.stopping_temperature = 1e-8 if stopping_T == -1 else stopping_T
-        self.stopping_iter = 1e5 if stopping_iter == -1 else stopping_iter
+        self.stopping_iter = 2e4 if stopping_iter == -1 else stopping_iter
         self.iteration = 1
 
         self.nodes = [i for i in range(self.N)]
@@ -33,21 +38,42 @@ class SimAnneal(object):
                 return False
         return True
 
-    def initial_solution(self):
+    # def initial_solution(self):
+    #     """Greedy solution using value-to-weight ratio"""
+    #     sorted_items = sorted(self.items,
+    #                           key=lambda x: x.value / x.weight, reverse=True)
+    #
+    #     solution = [0] * self.N
+    #     remaining_capacity = self.max_capacity
+    #
+    #     for item in sorted_items:
+    #         idx = self.items.index(item)
+    #         quantity = item.max_quantity
+    #         while quantity > 0 and item.weight <= remaining_capacity:
+    #             solution[idx] += 1
+    #             remaining_capacity -= item.weight
+    #             quantity -= 1
+    #
+    #     fitness = sum(item.value * count for item, count in zip(self.items, solution))
+    #     return solution, fitness
+
+
+    def random_initial_solution(self):
         """Greedy solution using value-to-weight ratio"""
-        sorted_items = sorted(self.items,
-                              key=lambda x: x.value / x.weight, reverse=True)
 
         solution = [0] * self.N
         remaining_capacity = self.max_capacity
-
-        for item in sorted_items:
-            idx = self.items.index(item)
+        limit = sum(item.max_quantity for item in self.items)
+        for _ in range(limit):
+            idx = self.items.index(random.choice(self.items))
+            item = self.items[idx]
             quantity = item.max_quantity
-            while quantity > 0 and item.weight <= remaining_capacity:
+            if quantity > 0 and item.weight <= remaining_capacity:
                 solution[idx] += 1
                 remaining_capacity -= item.weight
                 quantity -= 1
+
+
 
         fitness = sum(item.value * count for item, count in zip(self.items, solution))
         return solution, fitness
@@ -105,7 +131,7 @@ class SimAnneal(object):
 
     def anneal(self):
         # Initialize with the greedy solution.
-        self.cur_solution, self.cur_fitness = self.initial_solution()
+        self.cur_solution, self.cur_fitness = self.random_initial_solution()
         self.best_fitness, self.best_solution = self.cur_fitness, self.cur_solution
         self.greedy_fitness = self.cur_fitness  # ← Store it right away
         # print(f"Greedy solution: {self.cur_fitness}") testing purpose
@@ -119,10 +145,10 @@ class SimAnneal(object):
 
             self.fitness_list.append(self.cur_fitness)
 
-        print("Best fitness obtained: ", self.best_fitness)
         print("Found at iteration: ", self.best_iteration)
-        improvement = 100 * (self.best_fitness - self.greedy_fitness) / (self.greedy_fitness)
-        print(f"Improvement over greedy heuristic: {improvement: .2f}%")
+        print("Best fitness obtained: ", self.best_fitness)
+        # improvement = 100 * (self.best_fitness - self.greedy_fitness) / (self.greedy_fitness)
+        # print(f"Improvement over greedy heuristic: {improvement: .2f}%")
 
     def batch_anneal(self, times=10):
         """
@@ -132,7 +158,7 @@ class SimAnneal(object):
             print(f"Iteration {i}/{times} -------------------------------")
             self.T = self.T_save
             self.iteration = 1
-            self.cur_solution, self.cur_fitness = self.initial_solution()
+            self.cur_solution, self.cur_fitness = self.random_initial_solution()
             self.anneal()
 
     def plot_learning(self):
